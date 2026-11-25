@@ -98,16 +98,16 @@ class Gmail:
                 listing = self._get(f"{API}/messages", lp)
                 ids = [m["id"] for m in listing.get("messages", [])]
                 msgs = list(pool.map(lambda i: self._get(f"{API}/messages/{i}", params), ids))
-                older = False
+                in_window = 0
                 for m in msgs:
-                    meta = to_meta(m, me)
                     if int(m.get("internalDate", "0")) / 1000 < since.timestamp():
-                        older = True
-                        continue
+                        continue  # Gmail's list is only roughly newest-first: skip, don't stop
+                    in_window += 1
+                    meta = to_meta(m, me)
                     if meta:
                         out.append(meta)
                 if progress:
                     progress(len(out))
                 page = listing.get("nextPageToken")
-                if older or not page:
+                if in_window == 0 or not page:  # stop only when a whole page is older than the window
                     return out

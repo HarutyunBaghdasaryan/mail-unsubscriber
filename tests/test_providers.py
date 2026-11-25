@@ -123,3 +123,29 @@ def test_gmail_other_403_is_readable_error():
     client, _ = recorder(lambda req: httpx.Response(403, json={"error": {"errors": [{"reason": "insufficientPermissions"}]}}))
     with pytest.raises(ProviderError, match="insufficientPermissions"):
         Gmail(lambda: "tok", client)._get("https://gmail.googleapis.com/gmail/v1/users/me/messages")
+
+
+def test_gmail_does_not_stop_at_first_old_message():
+    page1 = [gmail_msg(1, 1), gmail_msg(2, 300), gmail_msg(3, 2)]  # one old message mixed in
+    page2 = [gmail_msg(4, 5), gmail_msg(5, 6)]
+    page3 = [gmail_msg(6, 400), gmail_msg(7, 500)]  # whole page older: stop here
+    page4 = [gmail_msg(8, 1)]  # must never be fetched
+    pages = [page1, page2, page3, page4]
+    msgs = {m["id"]: m for pg in pages for m in pg}
+
+    def handler(req):
+        path = req.url.path
+        if path.endswith("/profile"):
+            return httpx.Response(200, json={"emailAddress": "me@example.org"})
+        if path.endswith("/messages"):
+            n = int(req.url.params.get("pageToken", "0"))
+            body = {"messages": [{"id": m["id"]} for m in pages[n]]}
+            if n + 1 < len(pages):
+                body["nextPageToken"] = str(n + 1)
+            return httpx.Response(200, json=body)
+        return httpx.Response(200, json=msgs[path.rsplit("/", 1)[1]])
+
+    client, seen = recorder(handler)
+    out = Gmail(lambda: "tok", client, workers=2).fetch(NOW - timedelta(days=30))
+    assert sorted(m.id for m in out) == ["g1", "g3", "g4", "g5"]
+    assert not any(r.url.path.endswith("/g8") for r in seen)
