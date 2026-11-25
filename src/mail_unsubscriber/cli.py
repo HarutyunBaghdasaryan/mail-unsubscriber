@@ -22,9 +22,19 @@ def _err(msg: str, nxt: str | None = None) -> None:
 
 
 def _pick_account(accounts: dict, name: str | None) -> str | None:
+    """Return the account name, or print why not (unknown name / several accounts) and return None."""
     if name:
-        return name if name in accounts else None
-    return next(iter(accounts)) if len(accounts) == 1 else None
+        if name in accounts:
+            return name
+        _err(f'No account named "{name}". Accounts: {", ".join(accounts) or "none"}.')
+        return None
+    if len(accounts) == 1:
+        return next(iter(accounts))
+    if not accounts:
+        _err("No account yet.", "unsub login --provider gmail|outlook")
+    else:
+        _err(f"Several accounts ({', '.join(accounts)}): add --account NAME, e.g. --account {next(iter(accounts))}.")
+    return None
 
 
 def cmd_login(args) -> int:
@@ -66,8 +76,7 @@ def cmd_scan(args) -> int:
     accounts = store.load_accounts()
     name = _pick_account(accounts, args.account)
     if not name:
-        _err("No such account (or several exist).", "unsub login --provider gmail|outlook [--account NAME]")
-        return EXIT_SIGNIN
+        return EXIT_USAGE
     acct = accounts[name]
     since = datetime.now(timezone.utc) - timedelta(days=args.days)
 
@@ -122,9 +131,11 @@ def cmd_explain(args) -> int:
 
     accounts = store.load_accounts()
     name = _pick_account(accounts, args.account)
-    path = store.app_dir() / "scans" / f"{name}.json" if name else None
-    if not path or not path.exists():
-        _err("No saved scan for this account.", "unsub scan [--account NAME]")
+    if not name:
+        return EXIT_USAGE
+    path = store.app_dir() / "scans" / f"{name}.json"
+    if not path.exists():
+        _err(f'No saved scan for "{name}".', f"unsub scan --account {name}")
         return EXIT_USAGE
     data = json.loads(path.read_text())
     sender = args.sender.strip().lower()
@@ -160,9 +171,11 @@ def _load_scan(args):
 
     accounts = store.load_accounts()
     name = _pick_account(accounts, args.account)
-    path = store.app_dir() / "scans" / f"{name}.json" if name else None
-    if not path or not path.exists():
-        _err("No saved scan for this account.", "unsub scan [--account NAME]")
+    if not name:
+        return None, None
+    path = store.app_dir() / "scans" / f"{name}.json"
+    if not path.exists():
+        _err(f'No saved scan for "{name}".', f"unsub scan --account {name}")
         return None, None
     return name, json.loads(path.read_text())
 
@@ -218,7 +231,6 @@ def cmd_keep(args) -> int:
     accounts = store.load_accounts()
     name = _pick_account(accounts, args.account)
     if not name:
-        _err("No such account.")
         return EXIT_USAGE
     for s in args.senders:
         journal.add(name, s.strip().lower(), "kept")
@@ -232,7 +244,6 @@ def cmd_logout(args) -> int:
     accounts = store.load_accounts()
     name = _pick_account(accounts, args.account)
     if not name:
-        _err("No such account.")
         return EXIT_USAGE
     store.delete_secret(name)
     store.remove_account(name)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +16,7 @@ from . import ProviderError
 
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
 HEADERS = ["From", "Authentication-Results", "DKIM-Signature", "List-Unsubscribe", "List-Unsubscribe-Post", "Date"]
+MAX_RPS = 20  # 20 x 5 quota units = 100/s, well under the 250/s per-user limit
 RATE_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "concurrentLimitExceeded"}
 
 
@@ -60,20 +62,34 @@ def to_meta(msg: dict, own_address: str | None = None) -> MessageMeta | None:
 
 
 class Gmail:
-    def __init__(self, token: Callable[[], str], client: httpx.Client | None = None, workers: int = 4):
+    def __init__(self, token: Callable[[], str], client: httpx.Client | None = None, workers: int = 3):
         self._token = token
+        self._lock = threading.Lock()
+        self._next = 0.0
+        self._sleep = time.sleep
         self._client = client or httpx.Client(timeout=30)
         self._workers = workers
 
+    def _throttle(self) -> None:
+        """Keep under Gmail's per-user quota: at most `MAX_RPS` requests per second across threads."""
+        with self._lock:
+            wait = self._next - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            self._next = max(self._next, time.monotonic()) + 1 / MAX_RPS
+
     def _get(self, url: str, params: dict | list | None = None) -> dict:
-        for attempt in range(8):
+        attempts = 10  # with backoff this waits up to ~6 minutes before giving up
+        for attempt in range(attempts):
+            self._throttle()
             r = self._client.get(url, params=params, headers={"Authorization": f"Bearer {self._token()}"})
             if r.status_code < 400:
                 return r.json()
             reason = _reason(r)
             retry = r.status_code in (429, 500, 503) or reason in RATE_REASONS
-            if retry and attempt < 7:
-                time.sleep(min(2 ** attempt, 30))
+            if retry and attempt < attempts - 1:
+                after = r.headers.get("Retry-After")
+                self._sleep(float(after) if after and after.isdigit() else min(2 ** (attempt + 1), 60))
                 continue
             raise ProviderError(f"Gmail refused the request ({r.status_code} {reason or ''}).".replace(" )", ")"))
         raise ProviderError("Gmail kept refusing requests (rate limit).")

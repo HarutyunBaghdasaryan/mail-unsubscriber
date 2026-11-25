@@ -21,3 +21,15 @@ def test_unsubscribe_without_terminal_refuses(capsys, monkeypatch):
 
 def test_mcp_not_implemented(capsys):
     assert main(["mcp"]) == 2
+
+
+def test_several_accounts_need_account_flag(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("MAIL_UNSUB_HOME", str(tmp_path))
+    from mail_unsubscriber import store
+
+    store.save_account("gmail", "gmail", None)
+    store.save_account("outlook", "outlook", None)
+    assert main(["show"]) == 2
+    assert "add --account NAME" in capsys.readouterr().err
+    assert main(["show", "--account", "gmail"]) == 2
+    assert 'No saved scan for "gmail"' in capsys.readouterr().err
