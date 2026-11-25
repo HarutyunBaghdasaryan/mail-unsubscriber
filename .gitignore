@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Never commit user data, tokens or local config
+config.toml
+*.local.toml
+.env
+.env.*
+scans/
+journal.jsonl
+reports/
+private/
+*token*.json
+client_secret*.json
+*.pem
+*.key
+
+# OS
+.DS_Store

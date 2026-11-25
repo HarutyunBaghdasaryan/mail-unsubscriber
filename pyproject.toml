@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mail-unsubscriber"
+version = "0.0.1"
+description = "Safely unsubscribe from marketing email in Gmail and Outlook. Headers only, local, read-only."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "Harutyun Baghdasaryan" }]
+dependencies = [
+  "google-auth-oauthlib",
+  "msal",
+  "keyring",
+  "httpx",
+  "pyobjc-framework-LocalAuthentication; sys_platform == 'darwin'",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp"]
+dev = ["pytest"]
+
+[project.scripts]
+unsub = "mail_unsubscriber.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mail_unsubscriber"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
