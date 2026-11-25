@@ -1,6 +1,8 @@
 # mail-unsubscriber
 
-**Less noise, safely.** Unsubscribe from the marketing email you never read, in Gmail and Outlook,
+### Less noise. More focus.
+
+**Unsubscribe safely** from the marketing email you never read, in Gmail and Outlook,
 without ever touching spam, phishing or the mail that matters.
 
 > Status: **early release** (macOS). Gmail sign-in for public builds arrives with the first tagged release.
@@ -15,10 +17,25 @@ This tool gives that attention back. It finds the senders that are safe to drop,
 who they are, and unsubscribes in one confirmed step, so your inbox holds people and decisions,
 not noise. It is built to be **cautious first**: when it is not sure, it does nothing.
 
+## Why it's secure: headers only, never the body
+
+Many "unsubscribe" tools ask for full access to your mailbox and follow links inside emails. This one doesn't.
+
+| What we never do | Why it matters |
+|---|---|
+| Read message bodies or attachments | Your conversations, documents and attachments never reach the app. For Gmail, Google itself enforces this: the app only holds the `gmail.metadata` permission ("labels and headers, but not the email body"). For Outlook, the app requests headers only |
+| Click links inside emails | Unsubscribe links in the body are a classic phishing trick. We only use the standard unsubscribe **header**, and only when the sender signed it |
+| Unsubscribe from spam or phishing | Doing so tells the sender your address is real. Those senders are only flagged |
+| Write to your mailbox | Read-only access: nothing is moved, labelled or deleted |
+| Send your data anywhere | Everything runs on your Mac. No servers, no telemetry |
+
+**What the headers tell us is enough:** who really sent the email (the sender check your provider
+already performed), whether the sender signed it, and whether it offers a standard one-click
+unsubscribe. That is all the app needs, and nothing more.
+
 ## How it works
 
-1. **Reads email headers only.** Never message bodies or attachments. Gmail enforces this for us;
-   for Outlook the app only asks for headers.
+1. **Reads headers only** (see above).
 2. **Sorts every sender into 4 groups:**
 
    | Group | Meaning | What the app does |
