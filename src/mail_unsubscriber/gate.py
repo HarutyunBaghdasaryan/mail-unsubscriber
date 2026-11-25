@@ -72,3 +72,41 @@ def check(messages: list[MessageMeta]) -> GateResult:
     if not sigs or not all(needed <= s.signed_headers for s in sigs):
         return _deny(Code.UNSUB_NOT_SIGNED)
     return GateResult(True, Code.GATE_PASS, url)
+
+
+def trace(messages: list[MessageMeta]) -> list[dict]:
+    """Per-message technical check results for `unsub explain` (no content, no URLs)."""
+    rows = []
+    for m in sorted(messages, key=lambda m: m.date):
+        a = m.auth
+        aligned_pass = {d for d in (a.dkim_pass_domains if a else ()) if aligned(d, m.from_domain)}
+        rows.append({
+            "date": m.date.isoformat(timespec="minutes"),
+            "in_junk": m.in_junk,
+            "ms_cat": m.ms_cat,
+            "ms_sfv": m.ms_sfv,
+            "auth_header": "missing" if a is None else ("untrusted" if not a.trusted else "ok"),
+            "dmarc": a.dmarc if a else None,
+            "dmarc_about": a.dmarc_header_from if a else None,
+            "dkim_pass": sorted(a.dkim_pass_domains) if a else [],
+            "signatures": [
+                {"d": s.d, "aligned_pass": s.d in aligned_pass,
+                 "covers_unsubscribe": {"list-unsubscribe", "list-unsubscribe-post"} <= s.signed_headers}
+                for s in m.dkim_sigs
+            ],
+            "https_unsubscribe": https_unsubscribe_url(m.list_unsubscribe) is not None,
+            "one_click": is_one_click(m.list_unsubscribe_post),
+        })
+    return rows
+
+
+EXPLAIN = {
+    Code.GATE_PASS: "All checks passed: authenticated sender, signed one-click unsubscribe.",
+    Code.IN_SPAM: "At least one email from this sender is in Spam/Junk. Your provider handles it; not offered.",
+    Code.PROVIDER_FLAGGED: "Microsoft flagged at least one email (spam/bulk verdict not on the allowlist).",
+    Code.AUTH_HEADER_UNTRUSTED: "The provider's authentication header looked duplicated or forged on an email.",
+    Code.DMARC_FAIL_SEEN: "At least one email FAILED the sender check (DMARC).",
+    Code.NOT_AUTHENTICATED: "Fewer than 2 emails show a passing sender check (DMARC) for this From domain.",
+    Code.NO_ONE_CLICK: "The newest email has no https one-click unsubscribe (RFC 8058).",
+    Code.UNSUB_NOT_SIGNED: "The unsubscribe headers are not covered by the sender's own signature (DKIM).",
+}
