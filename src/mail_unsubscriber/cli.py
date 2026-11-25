@@ -1,7 +1,7 @@
 """Command-line entry point.
 
-login / scan / explain / logout work now. show / unsubscribe / mcp are placeholders (not implemented: nothing acts).
-Exit codes: 0 ok, 1 error, 2 usage/not implemented, 3 sign-in needed.
+Commands: login, scan, show, explain, unsubscribe, keep, logout. mcp is a placeholder.
+Exit codes: 0 ok, 1 error, 2 usage, 3 sign-in needed, 6 a human must run this in a terminal.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import __version__
 
-EXIT_OK, EXIT_ERROR, EXIT_USAGE, EXIT_SIGNIN = 0, 1, 2, 3
+EXIT_OK, EXIT_ERROR, EXIT_USAGE, EXIT_SIGNIN, EXIT_HUMAN = 0, 1, 2, 3, 6
 
 
 def _err(msg: str, nxt: str | None = None) -> None:
@@ -155,6 +155,77 @@ def cmd_explain(args) -> int:
     return EXIT_OK
 
 
+def _load_scan(args):
+    from . import store
+
+    accounts = store.load_accounts()
+    name = _pick_account(accounts, args.account)
+    path = store.app_dir() / "scans" / f"{name}.json" if name else None
+    if not path or not path.exists():
+        _err("No saved scan for this account.", "unsub scan [--account NAME]")
+        return None, None
+    return name, json.loads(path.read_text())
+
+
+def cmd_show(args) -> int:
+    from .selection import Filters, matches
+
+    name, scan = _load_scan(args)
+    if not scan:
+        return EXIT_USAGE
+    f = Filters.from_args(args)
+    groups = {g.strip().upper() for g in (args.group or "CAN_UNSUBSCRIBE").split(",")}
+    rows = [d for d in scan["decisions"] if d["group"] in groups and matches(d, f)]
+    rows.sort(key=lambda d: (-d["count"], d["sender"]))
+    if args.json:
+        safe = [{k: d.get(k) for k in ("sender", "group", "code", "count", "gmail_category", "unsub_host")} for d in rows]
+        print(json.dumps({"schema": 1, "account": name, "senders": safe[: args.limit]}, indent=1))
+        return EXIT_OK
+    print(f"{len(rows)} sender(s) in {', '.join(sorted(groups))} (scan {scan['scanned_at'][:16]} UTC)")
+    for d in rows[: args.limit]:
+        print(f"  {d['count']:>4}  {d['sender']:<45} {d.get('gmail_category') or '-':<11} {d['code']}")
+    return EXIT_OK
+
+
+def cmd_unsubscribe(args) -> int:
+    from . import unsubscribe, userconfirm
+    from .netguard import one_click
+    from .selection import Filters
+
+    if sys.platform != "darwin":
+        _err("Unsubscribing needs macOS in this version (Touch ID / password confirmation).")
+        return EXIT_USAGE
+    if not sys.stdin.isatty():
+        _err("HUMAN_REQUIRED: unsubscribing must be confirmed by a person in a terminal.",
+             "run the same command yourself in Terminal")
+        return EXIT_HUMAN
+    name, scan = _load_scan(args)
+    if not scan:
+        return EXIT_USAGE
+
+    def ask(prompt: str) -> str:
+        with open("/dev/tty") as tty:
+            print(prompt, end="", flush=True)
+            return tty.readline()
+
+    return unsubscribe.run(name, scan, Filters.from_args(args), ask=ask, confirm=userconfirm.confirm,
+                           post=one_click, one_by_one=args.one_by_one)
+
+
+def cmd_keep(args) -> int:
+    from . import journal, store
+
+    accounts = store.load_accounts()
+    name = _pick_account(accounts, args.account)
+    if not name:
+        _err("No such account.")
+        return EXIT_USAGE
+    for s in args.senders:
+        journal.add(name, s.strip().lower(), "kept")
+    print(f"Kept {len(args.senders)} sender(s): they will not be offered again.")
+    return EXIT_OK
+
+
 def cmd_logout(args) -> int:
     from . import store
 
@@ -169,6 +240,16 @@ def cmd_logout(args) -> int:
         (store.app_dir() / "scans" / f"{name}.json").unlink(missing_ok=True)
     print(f'Signed out of "{name}"' + (" and deleted its scan." if args.purge else "."))
     return EXIT_OK
+
+
+def _add_filters(p) -> None:
+    p.add_argument("--account")
+    p.add_argument("--category", action="append", help="Gmail tab(s): promotions,updates,social,forums")
+    p.add_argument("--sender", action="append", help="exact address(es)")
+    p.add_argument("--domain", action="append", help="company domain(s), e.g. linkedin.com")
+    p.add_argument("--exclude-sender", action="append")
+    p.add_argument("--exclude-domain", action="append")
+    p.add_argument("--min-emails", type=int, default=1)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -190,13 +271,24 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("sender")
     p.add_argument("--account")
     p.add_argument("--json", action="store_true")
-    for c in ("show", "unsubscribe", "mcp"):
-        sub.add_parser(c, help="not implemented yet")
+    p = sub.add_parser("show", help="list senders from the last scan (with filters)")
+    _add_filters(p)
+    p.add_argument("--group", help="CAN_UNSUBSCRIBE (default), UNSURE, DANGER, KEEP; comma-separated")
+    p.add_argument("--limit", type=int, default=100)
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser("unsubscribe", help="unsubscribe from safe senders (you confirm; macOS)")
+    _add_filters(p)
+    p.add_argument("--one-by-one", action="store_true", help="ask y/n per sender instead of one 'yes'")
+    p = sub.add_parser("keep", help="never offer these senders again")
+    p.add_argument("senders", nargs="+")
+    p.add_argument("--account")
+    sub.add_parser("mcp", help="not implemented yet")
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
         return EXIT_OK
-    handlers = {"login": cmd_login, "scan": cmd_scan, "explain": cmd_explain, "logout": cmd_logout}
+    handlers = {"login": cmd_login, "scan": cmd_scan, "show": cmd_show, "explain": cmd_explain,
+                "unsubscribe": cmd_unsubscribe, "keep": cmd_keep, "logout": cmd_logout}
     if args.command not in handlers:
         print(f"unsub {args.command}: not implemented yet", file=sys.stderr)
         return EXIT_USAGE

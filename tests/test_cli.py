@@ -11,6 +11,13 @@ def test_no_command_prints_help(capsys):
     assert "usage" in capsys.readouterr().out
 
 
-def test_unimplemented_command_does_nothing(capsys):
-    assert main(["unsubscribe"]) == 2
-    assert "not implemented" in capsys.readouterr().err
+def test_unsubscribe_without_terminal_refuses(capsys, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert main(["unsubscribe"]) == 6  # no TTY under pytest: a human must run it
+    assert "HUMAN_REQUIRED" in capsys.readouterr().err
+
+
+def test_mcp_not_implemented(capsys):
+    assert main(["mcp"]) == 2
