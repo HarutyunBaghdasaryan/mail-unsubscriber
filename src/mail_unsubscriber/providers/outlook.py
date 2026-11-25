@@ -10,8 +10,13 @@ import httpx
 
 from ..headers import parse_dkim_signature, parse_from, trusted_auth
 from ..model import MessageMeta
+from . import ProviderError
 
 API = "https://graph.microsoft.com/v1.0/me"
+class ProviderError(Exception):
+    pass
+
+
 SELECT = "id,receivedDateTime,parentFolderId,webLink,internetMessageHeaders"
 
 
@@ -68,9 +73,15 @@ class Outlook:
             if r.status_code in (429, 503, 504) and attempt < 5:
                 time.sleep(min(float(r.headers.get("Retry-After", 2 ** attempt)), 60))
                 continue
-            r.raise_for_status()
+            if r.status_code >= 400:
+                code = ""
+                try:
+                    code = r.json().get("error", {}).get("code", "")
+                except Exception:
+                    pass
+                raise ProviderError(f"Microsoft refused the request ({r.status_code} {code}).".replace(" )", ")"))
             return r.json()
-        raise RuntimeError("unreachable")
+        raise ProviderError("Microsoft kept refusing requests (rate limit).")
 
     def fetch(self, since: datetime, own_address: str | None = None,
               progress: Callable[[int], None] | None = None) -> list[MessageMeta]:

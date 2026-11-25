@@ -11,9 +11,22 @@ import httpx
 
 from ..headers import parse_dkim_signature, parse_from, trusted_auth
 from ..model import MessageMeta
+from . import ProviderError
 
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
 HEADERS = ["From", "Authentication-Results", "DKIM-Signature", "List-Unsubscribe", "List-Unsubscribe-Post", "Date"]
+RATE_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "concurrentLimitExceeded"}
+
+
+
+def _reason(r: httpx.Response) -> str | None:
+    try:
+        errs = r.json().get("error", {}).get("errors") or []
+        return errs[0].get("reason") if errs else r.json().get("error", {}).get("status")
+    except Exception:
+        return None
+
+
 CATEGORIES = {"CATEGORY_PROMOTIONS": "promotions", "CATEGORY_UPDATES": "updates", "CATEGORY_SOCIAL": "social",
               "CATEGORY_FORUMS": "forums", "CATEGORY_PERSONAL": "personal"}
 
@@ -47,25 +60,28 @@ def to_meta(msg: dict, own_address: str | None = None) -> MessageMeta | None:
 
 
 class Gmail:
-    def __init__(self, token: Callable[[], str], client: httpx.Client | None = None, workers: int = 8):
+    def __init__(self, token: Callable[[], str], client: httpx.Client | None = None, workers: int = 4):
         self._token = token
         self._client = client or httpx.Client(timeout=30)
         self._workers = workers
 
     def _get(self, url: str, params: dict | list | None = None) -> dict:
-        for attempt in range(5):
+        for attempt in range(8):
             r = self._client.get(url, params=params, headers={"Authorization": f"Bearer {self._token()}"})
-            if r.status_code in (429, 500, 503) and attempt < 4:
-                time.sleep(min(2 ** attempt, 20))
+            if r.status_code < 400:
+                return r.json()
+            reason = _reason(r)
+            retry = r.status_code in (429, 500, 503) or reason in RATE_REASONS
+            if retry and attempt < 7:
+                time.sleep(min(2 ** attempt, 30))
                 continue
-            r.raise_for_status()
-            return r.json()
-        raise RuntimeError("unreachable")
+            raise ProviderError(f"Gmail refused the request ({r.status_code} {reason or ''}).".replace(" )", ")"))
+        raise ProviderError("Gmail kept refusing requests (rate limit).")
 
     def own_address(self) -> str | None:
         try:
             return self._get(f"{API}/profile")["emailAddress"].lower()
-        except httpx.HTTPStatusError:
+        except ProviderError:
             return None
 
     def fetch(self, since: datetime, own_address: str | None = None,

@@ -97,3 +97,29 @@ def test_forefront_parsing_and_duplicate_denies():
     dup = ("X-Forefront-Antispam-Report", "SFV:NSPM;CAT:NONE")
     m = to_meta(outlook_msg(1, 1, extra=(dup, dup)), "JUNKID")
     assert m.ms_cat == "DUPLICATE"
+
+
+def test_gmail_rate_limit_403_is_retried(monkeypatch):
+    import mail_unsubscriber.providers.gmail as g
+
+    monkeypatch.setattr(g.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def handler(req):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return httpx.Response(403, json={"error": {"errors": [{"reason": "rateLimitExceeded"}]}})
+        return httpx.Response(200, json={"emailAddress": "me@example.org"})
+
+    client, _ = recorder(handler)
+    assert Gmail(lambda: "tok", client).own_address() == "me@example.org" and calls["n"] == 3
+
+
+def test_gmail_other_403_is_readable_error():
+    import pytest
+
+    from mail_unsubscriber.providers import ProviderError
+
+    client, _ = recorder(lambda req: httpx.Response(403, json={"error": {"errors": [{"reason": "insufficientPermissions"}]}}))
+    with pytest.raises(ProviderError, match="insufficientPermissions"):
+        Gmail(lambda: "tok", client)._get("https://gmail.googleapis.com/gmail/v1/users/me/messages")

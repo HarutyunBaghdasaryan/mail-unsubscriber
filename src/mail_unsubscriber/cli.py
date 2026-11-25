@@ -61,6 +61,7 @@ def summarize(decisions, messages_read: int) -> dict:
 def cmd_scan(args) -> int:
     from . import auth, store
     from .classify import classify
+    from .providers import ProviderError
 
     accounts = store.load_accounts()
     name = _pick_account(accounts, args.account)
@@ -85,6 +86,9 @@ def cmd_scan(args) -> int:
     except auth.SignInNeeded:
         _err("\nSign-in expired.", f"unsub login --provider {acct['provider']} --account {name}")
         return EXIT_SIGNIN
+    except ProviderError as e:  # provider refusals: readable message, no traceback, nothing saved
+        _err(f"\n{e} Nothing was saved.", "try again in a few minutes")
+        return EXIT_ERROR
     print(file=sys.stderr)
     decisions = classify(msgs)
     summary = summarize(decisions, len(msgs))
