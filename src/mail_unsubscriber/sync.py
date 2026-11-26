@@ -118,8 +118,12 @@ def build_scan(account: str, acct: dict, msgs: list[MessageMeta], days: int, use
     """Classify and save the scan file used by show/explain/unsubscribe."""
     from collections import Counter
 
+    from . import journal
+
     now = now or datetime.now(timezone.utc)
-    decisions = classify(msgs, user_kept=frozenset(user_kept))
+    kept = frozenset(user_kept) | frozenset(journal.kept(account))
+    decisions = classify(msgs, protected_domains=frozenset(journal.protected_domains(account)), user_kept=kept)
+    done = journal.unsubscribed(account)
     summary = {
         "messages_read": len(msgs), "senders": len(decisions),
         "groups": dict(Counter(d.group.value for d in decisions)),
@@ -129,7 +133,8 @@ def build_scan(account: str, acct: dict, msgs: list[MessageMeta], days: int, use
     scan = {
         "account": account, "provider": acct["provider"], "scanned_at": now.isoformat(), "days": days,
         "summary": summary,
-        "decisions": [dict(d.__dict__) for d in decisions],
+        "decisions": [dict(d.__dict__) | ({"unsubscribed_at": done[d.sender]} if d.sender in done else {})
+                      for d in decisions],
         "traces": {s: trace(ms) for s, ms in group_by_sender(msgs).items()},
     }
     store.save_scan(account, scan)

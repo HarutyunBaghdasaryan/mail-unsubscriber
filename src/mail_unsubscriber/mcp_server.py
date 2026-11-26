@@ -47,11 +47,15 @@ def list_accounts() -> dict:
 
 
 def summary(account: str | None = None) -> dict:
+    if account is None and len(store.load_accounts()) > 1:
+        return {"accounts": [summary(a) for a in store.load_accounts()]}
     name, scan, err = _account(account)
     if err:
-        return {"error": err}
+        return {"account": account, "error": err}
     decs = scan["decisions"]
-    can = sorted([d for d in decs if d["group"] == "CAN_UNSUBSCRIBE"], key=lambda d: -int(d["count"]))
+    done = [d for d in decs if d.get("unsubscribed_at")]
+    can = sorted([d for d in decs if d["group"] == "CAN_UNSUBSCRIBE" and not d.get("unsubscribed_at")],
+                 key=lambda d: -int(d["count"]))
     tabs = Counter(d.get("gmail_category") for d in can if d.get("gmail_category"))
     return {
         "account": name, "scanned_at_utc": scan["scanned_at"][:16], "days": scan.get("days"),
@@ -59,6 +63,7 @@ def summary(account: str | None = None) -> dict:
         "groups": scan["summary"]["groups"], "reasons": scan["summary"]["reasons"],
         "can_unsubscribe_by_gmail_tab": dict(tabs),
         "can_unsubscribe_emails": sum(int(d["count"]) for d in can),
+        "already_unsubscribed_senders": len(done),
         "top_can_unsubscribe": [av.sender_row(d) for d in can[:10]],
     }
 
@@ -73,7 +78,8 @@ def show(account: str | None = None, group: str = "CAN_UNSUBSCRIBE", category: l
         return {"error": f"group must be one of {sorted(GROUPS)}"}
     f = Filters(categories={c.lower() for c in category or []}, domains={d.lower() for d in domain or []},
                 min_emails=max(1, int(min_emails)))
-    rows = sorted([d for d in scan["decisions"] if d["group"] == group and matches(d, f)],
+    rows = sorted([d for d in scan["decisions"] if d["group"] == group and matches(d, f)
+                   and not (group == "CAN_UNSUBSCRIBE" and d.get("unsubscribed_at"))],
                   key=lambda d: (-int(d["count"]), d["sender"]))
     res = {"account": name, "group": group, "total": len(rows),
            "senders": [av.sender_row(d) for d in rows[: max(1, min(int(limit), 200))]]}
@@ -91,8 +97,10 @@ def explain(sender: str, account: str | None = None) -> dict:
     dec = next((d for d in scan["decisions"] if d["sender"] == s), None)
     if dec is None:
         return {"error": "Sender not in the last scan."}
+    rows = av.trace_rows((scan.get("traces") or {}).get(s, []))
     return {"account": name, **av.sender_row(dec), "why": av.reason_text(str(dec["code"])),
-            "emails_checked": av.trace_rows((scan.get("traces") or {}).get(s, []))}
+            "unsubscribed_at": str(dec.get("unsubscribed_at") or "")[:16] or None,
+            "checks_summary": av.trace_summary(rows), "latest_emails": rows[-5:]}
 
 
 def build_server():

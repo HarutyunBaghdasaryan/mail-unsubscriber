@@ -40,6 +40,10 @@ def kept(account: str) -> set[str]:
     return {r["sender"] for r in entries(account) if r["action"] == "kept"}
 
 
+def protected_domains(account: str) -> set[str]:
+    return {r["sender"] for r in entries(account) if r["action"] == "protected"}
+
+
 def unsubscribed(account: str) -> dict[str, str]:
     """sender -> ISO time of the last successful unsubscribe."""
     return {r["sender"]: r["ts"] for r in entries(account) if r["action"] == "unsubscribed"}

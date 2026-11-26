@@ -95,3 +95,13 @@ def test_stored_file_is_private_and_has_no_bodies(tmp_path):
     assert oct(p.stat().st_mode & 0o777) == "0o600"
     data = p.read_text().lower()
     assert "subject" not in data and "body" not in data
+
+
+def test_keep_list_and_protected_domains_make_keep_group():
+    from mail_unsubscriber import journal
+
+    box = FakeGmail([msg(0, 5), msg(1, 3)])
+    msgs, _ = sync.sync("gmail", GMAIL, box, 30, now=NOW)
+    journal.add("gmail", "example.com", "protected")
+    scan = sync.build_scan("gmail", GMAIL, msgs, 30, now=NOW)
+    assert scan["decisions"][0]["group"] == Group.KEEP and scan["decisions"][0]["code"] == "PROTECTED"

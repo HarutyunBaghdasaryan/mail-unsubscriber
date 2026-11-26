@@ -106,3 +106,17 @@ def unsubscribe_command(account: str, category: list[str] | None, domains: list[
     if min_emails > 1:
         parts += ["--min-emails", str(int(min_emails))]
     return " ".join(parts)
+
+
+def trace_summary(rows: list[dict]) -> dict:
+    """Counts across all emails of a sender, so agents get the picture without 50 rows."""
+    from collections import Counter
+
+    return {
+        "emails": len(rows),
+        "in_spam": sum(1 for r in rows if r["in_spam"]),
+        "dmarc": dict(Counter(str(r["dmarc"]) for r in rows)),
+        "provider_auth_header": dict(Counter(str(r["provider_auth_header"]) for r in rows)),
+        "own_signature_covers_unsubscribe": dict(Counter(str(r["own_signature_covers_unsubscribe"]) for r in rows)),
+        "one_click_https": sum(1 for r in rows if r["one_click_https"]),
+    }

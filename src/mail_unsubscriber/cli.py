@@ -188,7 +188,8 @@ def cmd_show(args) -> int:
         return EXIT_USAGE
     f = Filters.from_args(args)
     groups = {g.strip().upper() for g in (args.group or "CAN_UNSUBSCRIBE").split(",")}
-    rows = [d for d in scan["decisions"] if d["group"] in groups and matches(d, f)]
+    rows = [d for d in scan["decisions"] if d["group"] in groups and matches(d, f)
+            and not (d["group"] == "CAN_UNSUBSCRIBE" and d.get("unsubscribed_at"))]
     rows.sort(key=lambda d: (-d["count"], d["sender"]))
     if args.json:
         from .agent_view import sender_row
@@ -260,9 +261,13 @@ def cmd_keep(args) -> int:
     name = _pick_account(accounts, args.account)
     if not name:
         return EXIT_USAGE
-    for s in args.senders:
+    for s in args.senders or []:
         journal.add(name, s.strip().lower(), "kept")
-    print(f"Kept {len(args.senders)} sender(s): they will not be offered again.")
+    doms = [d.strip().lower() for v in (args.domain or []) for d in v.split(",") if d.strip()]
+    for d in doms:
+        journal.add(name, d, "protected")
+    print(f"Kept {len(args.senders or [])} sender(s) and protected {len(doms)} domain(s): "
+          "never offered for unsubscribe. Takes effect on the next scan.")
     return EXIT_OK
 
 
@@ -343,8 +348,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("unsubscribe", help="unsubscribe from safe senders (you confirm; macOS)")
     _add_filters(p)
     p.add_argument("--one-by-one", action="store_true", help="ask y/n per sender instead of one 'yes'")
-    p = sub.add_parser("keep", help="never offer these senders again")
-    p.add_argument("senders", nargs="+")
+    p = sub.add_parser("keep", help="never offer these senders (or whole domains) again")
+    p.add_argument("senders", nargs="*")
+    p.add_argument("--domain", action="append", help="protect whole domains, e.g. chase.com,citi.com")
     p.add_argument("--account")
     sub.add_parser("mcp", help="read-only MCP server for AI agents (stdio)")
     p = sub.add_parser("agent", help="turn AI agent access on/off for an account")
