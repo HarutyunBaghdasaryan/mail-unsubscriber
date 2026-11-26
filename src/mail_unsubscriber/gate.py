@@ -27,6 +27,17 @@ class GateResult:
     unsub_url: str | None = None
 
 
+def _dmarc_covers(header_from: str | None, from_domain: str) -> bool:
+    """The provider's DMARC result is about the From domain itself or one of its parent domains.
+
+    Gmail reports the organizational domain (e.g. header.from=example.com for news.example.com).
+    Never accept a sibling, a child or an unrelated domain, and never a bare TLD.
+    """
+    if not header_from or "." not in header_from:
+        return False
+    return from_domain == header_from or from_domain.endswith("." + header_from)
+
+
 def _deny(code: Code) -> GateResult:
     return GateResult(False, code)
 
@@ -54,7 +65,7 @@ def check(messages: list[MessageMeta]) -> GateResult:
             return _deny(Code.AUTH_HEADER_UNTRUSTED)
         if m.auth.dmarc == "fail":
             return _deny(Code.DMARC_FAIL_SEEN)
-        if m.auth.dmarc == "pass" and m.auth.dmarc_header_from == m.from_domain == from_domain:
+        if m.auth.dmarc == "pass" and m.from_domain == from_domain and _dmarc_covers(m.auth.dmarc_header_from, m.from_domain):
             passes += 1
     if passes < MIN_DMARC_PASSES:
         return _deny(Code.NOT_AUTHENTICATED)

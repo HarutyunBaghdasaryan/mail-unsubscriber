@@ -122,3 +122,15 @@ def test_only_esp_signature_passed_and_covers(mk):
     """DMARC passes via SPF; the only passing DKIM is the ESP's (unaligned). Must deny."""
     ar = GMAIL_AR.replace("dkim=pass header.i=@news.example.com", "dkim=pass header.i=@esp.example.net")
     assert gate.check(two(mk, ar=[ar], sigs=[SIG_ESP])).code == Code.UNSUB_NOT_SIGNED
+
+
+def test_gmail_reports_parent_domain_for_subdomain_sender(mk):
+    """Real Gmail behaviour: From email.example.com, AR says header.from=example.com."""
+    ar = GMAIL_AR.replace("header.from=news.example.com", "header.from=example.com")
+    assert gate.check(two(mk, ar=[ar])).passed
+
+
+def test_dmarc_about_child_sibling_or_tld_is_rejected(mk):
+    for other in ("deep.news.example.com", "shop.example.com", "com"):
+        ar = GMAIL_AR.replace("header.from=news.example.com", f"header.from={other}")
+        assert gate.check(two(mk, ar=[ar])).code == Code.NOT_AUTHENTICATED, other
