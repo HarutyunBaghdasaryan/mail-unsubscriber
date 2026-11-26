@@ -34,6 +34,12 @@ def save_account(name: str, provider: str, email: str | None) -> None:
     _write_private(app_dir() / "accounts.json", json.dumps(accts, indent=1))
 
 
+def set_account_field(name: str, key: str, value) -> None:
+    accts = load_accounts()
+    accts[name][key] = value
+    _write_private(app_dir() / "accounts.json", json.dumps(accts, indent=1))
+
+
 def remove_account(name: str) -> None:
     accts = load_accounts()
     accts.pop(name, None)

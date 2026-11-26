@@ -19,8 +19,13 @@ def test_unsubscribe_without_terminal_refuses(capsys, monkeypatch):
     assert "HUMAN_REQUIRED" in capsys.readouterr().err
 
 
-def test_mcp_not_implemented(capsys):
-    assert main(["mcp"]) == 2
+def test_agent_switch(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("MAIL_UNSUB_HOME", str(tmp_path))
+    from mail_unsubscriber import store
+
+    store.save_account("work", "outlook", "me@company.example")
+    assert main(["agent", "--account", "work"]) == 0 and "off" in capsys.readouterr().out
+    assert main(["agent", "on", "--account", "work"]) == 0 and ": on" in capsys.readouterr().out
 
 
 def test_several_accounts_need_account_flag(tmp_path, monkeypatch, capsys):

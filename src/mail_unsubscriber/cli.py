@@ -1,6 +1,6 @@
 """Command-line entry point.
 
-Commands: login, scan, show, explain, unsubscribe, keep, logout. mcp is a placeholder.
+Commands: login, scan, show, explain, unsubscribe, keep, agent, mcp, logout.
 Exit codes: 0 ok, 1 error, 2 usage, 3 sign-in needed, 6 a human must run this in a terminal.
 """
 
@@ -191,7 +191,9 @@ def cmd_show(args) -> int:
     rows = [d for d in scan["decisions"] if d["group"] in groups and matches(d, f)]
     rows.sort(key=lambda d: (-d["count"], d["sender"]))
     if args.json:
-        safe = [{k: d.get(k) for k in ("sender", "group", "code", "count", "gmail_category", "unsub_host")} for d in rows]
+        from .agent_view import sender_row
+
+        safe = [sender_row(d) for d in rows]
         print(json.dumps({"schema": 1, "account": name, "senders": safe[: args.limit]}, indent=1))
         return EXIT_OK
     print(f"{len(rows)} sender(s) in {', '.join(sorted(groups))} (scan {scan['scanned_at'][:16]} UTC)")
@@ -264,6 +266,30 @@ def cmd_keep(args) -> int:
     return EXIT_OK
 
 
+def cmd_mcp(args) -> int:
+    try:
+        from .mcp_server import run
+    except ImportError:
+        _err("The MCP server needs the optional extra.", 'pip install "mail-unsubscriber[mcp]"')
+        return EXIT_USAGE
+    run()
+    return EXIT_OK
+
+
+def cmd_agent(args) -> int:
+    from . import agent_view, store
+
+    accounts = store.load_accounts()
+    name = _pick_account(accounts, args.account)
+    if not name:
+        return EXIT_USAGE
+    if args.state:
+        store.set_account_field(name, "agent", args.state)
+    state = "on" if agent_view.agent_allowed(store.load_accounts()[name]) else "off"
+    print(f'AI agent access for "{name}": {state}' + ("" if args.state else " (default)" if "agent" not in accounts[name] else ""))
+    return EXIT_OK
+
+
 def cmd_logout(args) -> int:
     from . import store
 
@@ -320,13 +346,17 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("keep", help="never offer these senders again")
     p.add_argument("senders", nargs="+")
     p.add_argument("--account")
-    sub.add_parser("mcp", help="not implemented yet")
+    sub.add_parser("mcp", help="read-only MCP server for AI agents (stdio)")
+    p = sub.add_parser("agent", help="turn AI agent access on/off for an account")
+    p.add_argument("state", nargs="?", choices=["on", "off"])
+    p.add_argument("--account")
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
         return EXIT_OK
     handlers = {"login": cmd_login, "scan": cmd_scan, "show": cmd_show, "explain": cmd_explain,
-                "unsubscribe": cmd_unsubscribe, "keep": cmd_keep, "logout": cmd_logout}
+                "unsubscribe": cmd_unsubscribe, "keep": cmd_keep, "logout": cmd_logout,
+                "mcp": cmd_mcp, "agent": cmd_agent}
     if args.command not in handlers:
         print(f"unsub {args.command}: not implemented yet", file=sys.stderr)
         return EXIT_USAGE

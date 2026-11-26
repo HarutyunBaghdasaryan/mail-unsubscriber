@@ -107,6 +107,30 @@ Details: [docs/requirements.md](docs/requirements.md) · Report a vulnerability:
 | `explain SENDER` | Why a sender got its group (technical checks only) |
 | `unsubscribe` | Unsubscribe from safe senders after your confirmation |
 | `keep SENDER` | Never offer this sender again |
+| `agent on\|off` | Allow or block AI agent access for an account |
+| `mcp` | Read-only MCP server for AI agents |
+
+## Use with AI agents (Claude Desktop, Claude Code, any MCP client)
+
+Ask your assistant *"Which promotions can I drop?"* or *"Why is this sender unsure?"*.
+The built-in MCP server is **read-only**: it can list accounts, summarize, show senders and explain
+decisions from your last scan. It **cannot** scan, sign in or unsubscribe; it gives you the command
+to run yourself (you confirm with `yes` and Touch ID). Agents never see subjects, bodies, links or
+tokens, and sender text is validated so emails cannot smuggle instructions to the AI.
+
+```sh
+uv pip install -r requirements-mcp.lock          # optional extra
+claude mcp add mail-unsubscriber -- unsub mcp    # Claude Code
+```
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{ "mcpServers": { "mail-unsubscriber": { "command": "/path/to/mail-unsubscriber/.venv/bin/unsub", "args": ["mcp"] } } }
+```
+
+Personal mailboxes are visible to agents by default; work mailboxes are not.
+Change it per account: `unsub agent on|off --account NAME`.
 
 ## License
 
