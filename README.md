@@ -91,7 +91,8 @@ Prefer to decide one by one? `unsub unsubscribe --one-by-one`.
 - **Never follows links in emails.** The only request it sends is the standard one-click unsubscribe,
   over https, to a public server, without redirects or cookies.
 - **Spam and phishing are never unsubscribed** (that would confirm your address to the sender).
-- **Fresh data only.** Unsubscribing needs a scan from the last hour.
+- **Re-checked right before acting.** `unsubscribe` fetches any new emails and re-checks the chosen
+  senders on your provider (moved to Spam? deleted?) before asking you. Later scans read only new mail.
 - Every action is logged locally, so nothing is repeated and you can see what was done.
 
 Details: [docs/requirements.md](docs/requirements.md) · Report a vulnerability: [SECURITY.md](SECURITY.md)
@@ -101,7 +102,7 @@ Details: [docs/requirements.md](docs/requirements.md) · Report a vulnerability:
 | Command | What it does |
 |---|---|
 | `login` / `logout [--purge]` | Sign in / out (purge deletes local scan data) |
-| `scan` | Read headers and group senders. Never acts |
+| `scan [--full]` | Read headers and group senders (only new mail after the first scan). Never acts |
 | `show` | List senders from the last scan, with filters (`--json` for scripts and AI agents) |
 | `explain SENDER` | Why a sender got its group (technical checks only) |
 | `unsubscribe` | Unsubscribe from safe senders after your confirmation |
