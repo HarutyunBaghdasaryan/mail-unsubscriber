@@ -118,8 +118,10 @@ def cmd_scan(args) -> int:
     else:
         print(f"Account {name} ({acct['provider']}), last {args.days} days ({mode} scan): "
               f"{summary['messages_read']} messages, {summary['senders']} senders")
+        done = sum(1 for d in scan["decisions"] if d["group"] == "CAN_UNSUBSCRIBE" and d.get("unsubscribed_at"))
         for g in ("DANGER", "CAN_UNSUBSCRIBE", "UNSURE", "KEEP"):
-            print(f"  {g:<16}{summary['groups'].get(g, 0):>6} senders")
+            extra = f"  ({done} already unsubscribed, {summary['groups'].get(g, 0) - done} open)" if g == "CAN_UNSUBSCRIBE" and done else ""
+            print(f"  {g:<16}{summary['groups'].get(g, 0):>6} senders{extra}")
         print("Reasons: " + ", ".join(f"{k} {v}" for k, v in sorted(summary["reasons"].items(), key=lambda x: -x[1])))
     return EXIT_OK
 
