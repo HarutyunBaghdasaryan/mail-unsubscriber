@@ -3,7 +3,7 @@ from mail_unsubscriber.cli import main
 
 
 def test_version_string():
-    assert __version__ == "0.0.1"
+    assert __version__ == "0.1.0"
 
 
 def test_no_command_prints_help(capsys):

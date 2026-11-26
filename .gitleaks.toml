@@ -1,6 +1,3 @@
 # Secret scanning rules: gitleaks defaults.
-# At release, the Google *desktop* OAuth client secret will be embedded. Google documents installed-app
-# secrets as non-confidential (https://developers.google.com/identity/protocols/oauth2/native-app).
-# Then add an [allowlist] with its exact value (regexes = [...]) here, in the same commit.
 [extend]
 useDefault = true

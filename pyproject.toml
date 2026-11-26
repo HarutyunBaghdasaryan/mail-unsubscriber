@@ -4,13 +4,22 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mail-unsubscriber"
-version = "0.0.1"
+version = "0.1.0"
 description = "Safely unsubscribe from marketing email in Gmail and Outlook. Headers only, local, read-only."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "Harutyun Baghdasaryan" }]
+keywords = ["email", "unsubscribe", "gmail", "outlook", "privacy", "dmarc", "dkim", "rfc8058", "mcp"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Communications :: Email",
+]
 dependencies = [
   "google-auth-oauthlib",
   "msal",
@@ -18,6 +27,11 @@ dependencies = [
   "httpx",
   "pyobjc-framework-LocalAuthentication; sys_platform == 'darwin'",
 ]
+
+[project.urls]
+Homepage = "https://github.com/HarutyunBaghdasaryan/mail-unsubscriber"
+Issues = "https://github.com/HarutyunBaghdasaryan/mail-unsubscriber/issues"
+Privacy = "https://github.com/HarutyunBaghdasaryan/mail-unsubscriber/blob/main/PRIVACY.md"
 
 [project.optional-dependencies]
 mcp = ["mcp"]

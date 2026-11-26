@@ -1,12 +1,40 @@
 # mail-unsubscriber
 
+[![tests](https://github.com/HarutyunBaghdasaryan/mail-unsubscriber/actions/workflows/ci.yml/badge.svg)](https://github.com/HarutyunBaghdasaryan/mail-unsubscriber/actions/workflows/ci.yml)
+![license](https://img.shields.io/badge/license-MIT-blue)
+![python](https://img.shields.io/badge/python-3.12%2B-blue)
+![platform](https://img.shields.io/badge/platform-macOS-lightgrey)
+
 ### Less noise. More focus.
 
 **Unsubscribe safely** from the marketing email you never read, in Gmail and Outlook,
 without ever touching spam, phishing or the mail that matters.
 
-> Status: **early release** (macOS). Gmail sign-in for public builds arrives with the first tagged release.
-> Feedback welcome.
+> **Real result:** the author's first run unsubscribed from **66 marketing lists**, about
+> **950 promotional emails a month**, in one confirmed step. Bank, health and family senders untouched.
+
+> Status: **early release** (v0.1, macOS). Outlook works out of the box; Gmail needs a Google client during early access (see FAQ). Feedback welcome.
+
+```text
+$ unsub scan --account gmail
+read 5484 messages
+Account gmail (gmail), last 30 days: 5484 messages, 2151 senders
+  DANGER               0 senders
+  CAN_UNSUBSCRIBE    242 senders
+  UNSURE            1869 senders
+  KEEP                40 senders
+
+$ unsub unsubscribe --account gmail --category promotions --exclude-domain bank.example
+58 sender(s) can be unsubscribed (checked: authenticated, signed one-click):
+    1. editorial@news.example.com          58 emails  promotions  via news.example.com
+    2. deals@shop.example                  56 emails  promotions  via mail.esp.example.net
+    ...
+Type 'yes' to unsubscribe from all 58 sender(s) listed above: yes
+  [Touch ID: "unsubscribe from 58 sender(s): news.example.com, shop.example and 50 more"]
+  ✓ editorial@news.example.com (200)
+  ...
+Done: 55 unsubscribed, 3 failed.
+```
 
 ## Vision
 
@@ -49,14 +77,26 @@ unsubscribe. That is all the app needs, and nothing more.
    sender check (DMARC) and its one-click unsubscribe (RFC 8058) is signed by its own domain (DKIM).
    You see the full list, type `yes`, and confirm with **Touch ID**. Nothing else is ever sent.
 
-## Quick start (macOS)
+## Why not just the "Unsubscribe" button in Gmail or Outlook?
+
+Use it for one sender at a time. This tool adds:
+
+- **Bulk, with filters:** e.g. every Gmail Promotions sender except your bank, in one step.
+- **Gmail and Outlook** in one place.
+- **Cautious by design:** it proves the sender first, skips spam and phishing, explains every decision
+  (`unsub explain SENDER`) and lets you protect whole domains.
+- **AI-assistant ready:** a read-only MCP server so Claude or other agents can tell you what's noisy.
+
+## Install (macOS)
 
 ```sh
-git clone https://github.com/HarutyunBaghdasaryan/mail-unsubscriber.git
-cd mail-unsubscriber
-uv venv && uv pip install -r requirements.lock && uv pip install --no-deps -e .
-source .venv/bin/activate
+uv tool install git+https://github.com/HarutyunBaghdasaryan/mail-unsubscriber
 ```
+
+Prefer pinned, hash-checked dependencies? Clone the repo and run
+`uv venv && uv pip install -r requirements.lock && uv pip install --no-deps -e .`.
+
+Then:
 
 ```sh
 unsub login --provider gmail                  # opens Google's sign-in page
@@ -95,7 +135,7 @@ Prefer to decide one by one? `unsub unsubscribe --one-by-one`.
   senders on your provider (moved to Spam? deleted?) before asking you. Later scans read only new mail.
 - Every action is logged locally, so nothing is repeated and you can see what was done.
 
-Details: [docs/requirements.md](docs/requirements.md) · Report a vulnerability: [SECURITY.md](SECURITY.md)
+Privacy: [PRIVACY.md](PRIVACY.md) · Report a vulnerability: [SECURITY.md](SECURITY.md)
 
 ## Commands
 
@@ -106,7 +146,7 @@ Details: [docs/requirements.md](docs/requirements.md) · Report a vulnerability:
 | `show` | List senders from the last scan, with filters (`--json` for scripts and AI agents) |
 | `explain SENDER` | Why a sender got its group (technical checks only) |
 | `unsubscribe` | Unsubscribe from safe senders after your confirmation |
-| `keep SENDER` | Never offer this sender again |
+| `keep SENDER` / `keep --domain bank.example` | Never offer this sender (or whole domain) again |
 | `agent on\|off` | Allow or block AI agent access for an account |
 | `mcp` | Read-only MCP server for AI agents |
 
@@ -119,7 +159,7 @@ to run yourself (you confirm with `yes` and Touch ID). Agents never see subjects
 tokens, and sender text is validated so emails cannot smuggle instructions to the AI.
 
 ```sh
-uv pip install -r requirements-mcp.lock          # optional extra
+uv tool install "mail-unsubscriber[mcp] @ git+https://github.com/HarutyunBaghdasaryan/mail-unsubscriber"   # with the MCP extra
 claude mcp add mail-unsubscriber -- unsub mcp    # Claude Code
 ```
 
@@ -131,6 +171,23 @@ Claude Desktop (`claude_desktop_config.json`):
 
 Personal mailboxes are visible to agents by default; work mailboxes are not.
 Change it per account: `unsub agent on|off --account NAME`.
+
+## FAQ
+
+- **Which systems?** Unsubscribing needs macOS (Touch ID / password confirmation). Scan and show may
+  work elsewhere but are untested.
+- **Gmail sign-in during early access:** Gmail needs a Google client: set `MAIL_UNSUB_GOOGLE_CLIENT_ID`
+  and `MAIL_UNSUB_GOOGLE_CLIENT_SECRET` (your own Google Cloud "Desktop app" client with the
+  `gmail.metadata` scope). Outlook works out of the box.
+- **Work Microsoft account asks for admin approval?** Some companies require an admin to approve new
+  apps once. The app asks only for read access to headers (`Mail.ReadBasic`).
+- **A sender is in the wrong group?** Run `unsub explain SENDER --json` and open an issue with the output
+  (it contains no email content).
+
+## Contributing
+
+Issues and pull requests are welcome. Run `pytest` before sending changes; tests use made-up headers only,
+never real email.
 
 ## License
 
