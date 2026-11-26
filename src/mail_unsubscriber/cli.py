@@ -68,59 +68,59 @@ def summarize(decisions, messages_read: int) -> dict:
     }
 
 
-def cmd_scan(args) -> int:
-    from . import auth, store
-    from .classify import classify
+def _provider(name: str, acct: dict):
+    from . import auth
+
+    if acct["provider"] == "gmail":
+        from .providers.gmail import Gmail
+
+        return Gmail(lambda: auth.google_token(name))
+    from .providers.outlook import Outlook
+
+    return Outlook(lambda: auth.ms_token(name))
+
+
+def _progress(n: int) -> None:
+    print(f"\rread {n} new messages", end="", file=sys.stderr, flush=True)
+
+
+def _sync_and_build(name: str, acct: dict, days: int, full: bool):
+    """Incremental (or full) sync + classify. Returns (scan, mode) or (None, exit_code)."""
+    from . import auth, sync
     from .providers import ProviderError
+
+    try:
+        msgs, mode = sync.sync(name, acct, _provider(name, acct), days, full=full, progress=_progress)
+    except auth.SignInNeeded:
+        _err("\nSign-in expired.", f"unsub login --provider {acct['provider']} --account {name}")
+        return None, EXIT_SIGNIN
+    except ProviderError as e:
+        _err(f"\n{e} Nothing was saved.", "try again in a few minutes")
+        return None, EXIT_ERROR
+    print(file=sys.stderr)
+    return sync.build_scan(name, acct, msgs, days), mode
+
+
+def cmd_scan(args) -> int:
+    from . import store
 
     accounts = store.load_accounts()
     name = _pick_account(accounts, args.account)
     if not name:
         return EXIT_USAGE
     acct = accounts[name]
-    since = datetime.now(timezone.utc) - timedelta(days=args.days)
-
-    def progress(n: int) -> None:
-        print(f"\rread {n} messages", end="", file=sys.stderr, flush=True)
-
-    try:
-        if acct["provider"] == "gmail":
-            from .providers.gmail import Gmail
-
-            msgs = Gmail(lambda: auth.google_token(name)).fetch(since, acct.get("email"), progress)
-        else:
-            from .providers.outlook import Outlook
-
-            msgs = Outlook(lambda: auth.ms_token(name)).fetch(since, acct.get("email"), progress)
-    except auth.SignInNeeded:
-        _err("\nSign-in expired.", f"unsub login --provider {acct['provider']} --account {name}")
-        return EXIT_SIGNIN
-    except ProviderError as e:  # provider refusals: readable message, no traceback, nothing saved
-        _err(f"\n{e} Nothing was saved.", "try again in a few minutes")
-        return EXIT_ERROR
-    print(file=sys.stderr)
-    decisions = classify(msgs)
-    summary = summarize(decisions, len(msgs))
-    from .classify import group_by_sender
-    from .gate import trace
-
-    traces = {sender: trace(ms) for sender, ms in group_by_sender(msgs).items()}
-    path = store.save_scan(name, {
-        "account": name, "provider": acct["provider"], "scanned_at": datetime.now(timezone.utc).isoformat(),
-        "days": args.days, "summary": summary,
-        "decisions": [{k: v for k, v in d.__dict__.items() if k != "unsub_url"} | {"unsub_url": d.unsub_url}
-                      for d in decisions],
-        "traces": traces,
-    })
+    scan, mode = _sync_and_build(name, acct, args.days, args.full)
+    if scan is None:
+        return mode
+    summary = scan["summary"]
     if args.json:
-        print(json.dumps({"schema": 1, "account": name, **summary}, indent=1))
+        print(json.dumps({"schema": 1, "account": name, "mode": mode, **summary}, indent=1))
     else:
-        print(f"Account {name} ({acct['provider']}), last {args.days} days: {summary['messages_read']} messages, "
-              f"{summary['senders']} senders")
+        print(f"Account {name} ({acct['provider']}), last {args.days} days ({mode} scan): "
+              f"{summary['messages_read']} messages, {summary['senders']} senders")
         for g in ("DANGER", "CAN_UNSUBSCRIBE", "UNSURE", "KEEP"):
             print(f"  {g:<16}{summary['groups'].get(g, 0):>6} senders")
         print("Reasons: " + ", ".join(f"{k} {v}" for k, v in sorted(summary["reasons"].items(), key=lambda x: -x[1])))
-        print(f"Saved (private): {path}")
     return EXIT_OK
 
 
@@ -212,16 +212,39 @@ def cmd_unsubscribe(args) -> int:
         _err("HUMAN_REQUIRED: unsubscribing must be confirmed by a person in a terminal.",
              "run the same command yourself in Terminal")
         return EXIT_HUMAN
-    name, scan = _load_scan(args)
-    if not scan:
+    from . import auth, journal, store, sync
+    from .providers import ProviderError
+    from .selection import select
+
+    accounts = store.load_accounts()
+    name = _pick_account(accounts, args.account)
+    if not name:
         return EXIT_USAGE
+    acct = accounts[name]
+    stored = sync.load(name)
+    days = stored["days"] if stored else 30
+    print("Checking for new emails since the last scan...", file=sys.stderr)
+    scan, mode = _sync_and_build(name, acct, days, full=False)
+    if scan is None:
+        return mode
+    filters = Filters.from_args(args)
+    cand, _ = select(scan["decisions"], filters, journal.kept(name), set(journal.unsubscribed(name)))
+    if cand:  # re-check the chosen senders' emails right now (moved to Spam? deleted?)
+        print(f"Re-checking {len(cand)} sender(s) on current data...", file=sys.stderr)
+        try:
+            msgs = sync.recheck(name, _provider(name, acct), [sync.from_dict(d) for d in sync.load(name)["messages"]],
+                                {d["sender"] for d in cand})
+        except (auth.SignInNeeded, ProviderError) as e:
+            _err(f"Could not re-check senders ({e}). Nothing was sent.")
+            return EXIT_ERROR
+        scan = sync.build_scan(name, acct, msgs, days)
 
     def ask(prompt: str) -> str:
         with open("/dev/tty") as tty:
             print(prompt, end="", flush=True)
             return tty.readline()
 
-    return unsubscribe.run(name, scan, Filters.from_args(args), ask=ask, confirm=userconfirm.confirm,
+    return unsubscribe.run(name, scan, filters, ask=ask, confirm=userconfirm.confirm,
                            post=one_click, one_by_one=args.one_by_one)
 
 
@@ -273,7 +296,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--email", help="address hint for the sign-in page")
     p = sub.add_parser("scan", help="read headers and group senders (never acts)")
     p.add_argument("--account")
-    p.add_argument("--days", type=int, default=90)
+    p.add_argument("--days", type=int, default=30)
+    p.add_argument("--full", action="store_true", help="read everything again (default: only new emails)")
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("logout", help="sign out (and with --purge delete the saved scan)")
     p.add_argument("--account")

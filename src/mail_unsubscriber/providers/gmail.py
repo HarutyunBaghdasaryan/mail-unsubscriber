@@ -101,11 +101,17 @@ class Gmail:
             return None
 
     def fetch(self, since: datetime, own_address: str | None = None,
-              progress: Callable[[int], None] | None = None) -> list[MessageMeta]:
+              progress: Callable[[int], None] | None = None,
+              known: dict[str, float] | None = None, old_ids: set[str] | None = None) -> list[MessageMeta]:
+        """New messages since `since`. `known` = id -> unix time of messages we already have (skipped,
+        no request); `old_ids` = ids seen before outside the window (skipped). Both are updated."""
         me = (own_address or self.own_address() or "").lower() or None
+        known = {} if known is None else known
+        old_ids = set() if old_ids is None else old_ids
         params = [("format", "metadata")] + [("metadataHeaders", h) for h in HEADERS]
         out: list[MessageMeta] = []
         page = None
+        cutoff = since.timestamp()
         with ThreadPoolExecutor(self._workers) as pool:
             while True:
                 lp = {"maxResults": 500, "includeSpamTrash": "true"}
@@ -113,12 +119,16 @@ class Gmail:
                     lp["pageToken"] = page
                 listing = self._get(f"{API}/messages", lp)
                 ids = [m["id"] for m in listing.get("messages", [])]
-                msgs = list(pool.map(lambda i: self._get(f"{API}/messages/{i}", params), ids))
-                in_window = 0
+                todo = [i for i in ids if i not in known and i not in old_ids]
+                msgs = list(pool.map(lambda i: self._get(f"{API}/messages/{i}", params), todo))
+                in_window = sum(1 for i in ids if known.get(i, 0) >= cutoff)
                 for m in msgs:
-                    if int(m.get("internalDate", "0")) / 1000 < since.timestamp():
-                        continue  # Gmail's list is only roughly newest-first: skip, don't stop
+                    ts = int(m.get("internalDate", "0")) / 1000
+                    if ts < cutoff:
+                        old_ids.add(m["id"])  # Gmail's list is only roughly newest-first: skip, don't stop
+                        continue
                     in_window += 1
+                    known[m["id"]] = ts
                     meta = to_meta(m, me)
                     if meta:
                         out.append(meta)
@@ -127,3 +137,16 @@ class Gmail:
                 page = listing.get("nextPageToken")
                 if in_window == 0 or not page:  # stop only when a whole page is older than the window
                     return out
+
+    def states(self, ids: list[str]) -> dict[str, dict | None]:
+        """Current junk state of known messages (labels only). None = message no longer exists."""
+        def one(i):
+            try:
+                m = self._get(f"{API}/messages/{i}", {"format": "minimal"})
+                return i, {"in_junk": "SPAM" in set(m.get("labelIds", []))}
+            except ProviderError as e:
+                if "404" in str(e):
+                    return i, None
+                raise
+        with ThreadPoolExecutor(self._workers) as pool:
+            return dict(pool.map(one, ids))

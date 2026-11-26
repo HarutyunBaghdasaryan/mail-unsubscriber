@@ -69,7 +69,8 @@ class Outlook:
 
     def _get(self, url: str, params: dict | None = None) -> dict:
         for attempt in range(6):
-            r = self._client.get(url, params=params, headers={"Authorization": f"Bearer {self._token()}"})
+            r = self._client.get(url, params=params, headers={"Authorization": f"Bearer {self._token()}",
+                                                              "Prefer": 'IdType="ImmutableId"'})
             if r.status_code in (429, 503, 504) and attempt < 5:
                 time.sleep(min(float(r.headers.get("Retry-After", 2 ** attempt)), 60))
                 continue
@@ -104,4 +105,19 @@ class Outlook:
             if progress:
                 progress(len(out))
             url, p = page.get("@odata.nextLink"), None
+        return out
+
+    def states(self, ids: list[str]) -> dict[str, dict | None]:
+        """Current Junk state of known messages (immutable ids). None = message no longer exists."""
+        junk = self._get(f"{API}/mailFolders/junkemail", {"$select": "id"}).get("id")
+        out: dict[str, dict | None] = {}
+        for i in ids:
+            try:
+                m = self._get(f"{API}/messages/{i}", {"$select": "parentFolderId"})
+                out[i] = {"in_junk": m.get("parentFolderId") == junk}
+            except ProviderError as e:
+                if "404" in str(e):
+                    out[i] = None
+                else:
+                    raise
         return out
