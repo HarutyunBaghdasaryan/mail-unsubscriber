@@ -240,7 +240,10 @@ def cmd_unsubscribe(args) -> int:
         scan = sync.build_scan(name, acct, msgs, days)
 
     def ask(prompt: str) -> str:
+        import termios
+
         with open("/dev/tty") as tty:
+            termios.tcflush(tty.fileno(), termios.TCIFLUSH)  # drop anything typed before the prompt
             print(prompt, end="", flush=True)
             return tty.readline()
 
