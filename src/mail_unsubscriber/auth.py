@@ -18,7 +18,7 @@ def google_login(account: str):
 
     cfg = {
         "installed": {
-            "client_id": clients.GOOGLE_CLIENT_ID,
+            "client_id": clients.google_client_id(),
             "client_secret": clients.google_client_secret(),
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",

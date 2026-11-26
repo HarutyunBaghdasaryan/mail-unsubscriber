@@ -13,7 +13,7 @@ without ever touching spam, phishing or the mail that matters.
 > **Real result:** the author's first run unsubscribed from **66 marketing lists**, about
 > **950 promotional emails a month**, in one confirmed step. Bank, health and family senders untouched.
 
-> Status: **early release** (v0.1, macOS). Outlook works out of the box; Gmail needs a Google client during early access (see FAQ). Feedback welcome.
+> Status: **early release** (v0.1, macOS). Outlook works out of the box. Gmail needs a one-time, 5-minute setup during early access: [docs/gmail-setup.md](docs/gmail-setup.md). Feedback welcome.
 
 ```text
 $ unsub scan --account gmail
@@ -96,7 +96,7 @@ uv tool install git+https://github.com/HarutyunBaghdasaryan/mail-unsubscriber
 Prefer pinned, hash-checked dependencies? Clone the repo and run
 `uv venv && uv pip install -r requirements.lock && uv pip install --no-deps -e .`.
 
-Then:
+Then (Gmail: do the [one-time Gmail setup](docs/gmail-setup.md) first):
 
 ```sh
 unsub login --provider gmail                  # opens Google's sign-in page
@@ -107,7 +107,7 @@ unsub explain someone@news.example.com --account gmail
 unsub unsubscribe --account gmail --category promotions
 ```
 
-No app registration needed: you just sign in with your own account.
+Outlook: no setup, just sign in. Gmail: one-time setup above.
 
 ## Choose what to unsubscribe from
 
@@ -176,9 +176,9 @@ Change it per account: `unsub agent on|off --account NAME`.
 
 - **Which systems?** Unsubscribing needs macOS (Touch ID / password confirmation). Scan and show may
   work elsewhere but are untested.
-- **Gmail sign-in during early access:** Gmail needs a Google client: set `MAIL_UNSUB_GOOGLE_CLIENT_ID`
-  and `MAIL_UNSUB_GOOGLE_CLIENT_SECRET` (your own Google Cloud "Desktop app" client with the
-  `gmail.metadata` scope). Outlook works out of the box.
+- **Why does Gmail need setup?** During early access you connect through your own free Google app
+  (5 minutes, [docs/gmail-setup.md](docs/gmail-setup.md)): it keeps your Gmail access fully in your own
+  account. Outlook works out of the box.
 - **Work Microsoft account asks for admin approval?** Some companies require an admin to approve new
   apps once. The app asks only for read access to headers (`Mail.ReadBasic`).
 - **A sender is in the wrong group?** Run `unsub explain SENDER --json` and open an issue with the output

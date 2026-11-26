@@ -38,3 +38,16 @@ def test_several_accounts_need_account_flag(tmp_path, monkeypatch, capsys):
     assert "add --account NAME" in capsys.readouterr().err
     assert main(["show", "--account", "gmail"]) == 2
     assert 'No saved scan for "gmail"' in capsys.readouterr().err
+
+
+def test_gmail_needs_both_client_values(monkeypatch):
+    import pytest
+
+    from mail_unsubscriber import clients
+
+    monkeypatch.delenv("MAIL_UNSUB_GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.setenv("MAIL_UNSUB_GOOGLE_CLIENT_SECRET", "x")
+    with pytest.raises(SystemExit, match="gmail-setup.md"):
+        clients.google_client_secret()
+    monkeypatch.setenv("MAIL_UNSUB_GOOGLE_CLIENT_ID", "id")
+    assert clients.google_client_id() == "id" and clients.google_client_secret() == "x"

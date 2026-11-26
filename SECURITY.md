@@ -19,10 +19,7 @@ You can expect an acknowledgement within 7 days.
 ## Built-in sign-in apps
 
 - **Microsoft:** a public client: only an app ID, no secret.
-- **Google:** a "Desktop app" client. Its client secret is **not stored in this repository**; it is
-  provided at run time (`MAIL_UNSUB_GOOGLE_CLIENT_SECRET`). Even so, it grants no access by itself:
-  every user still signs in and consents, with PKCE.
-- **Use your own** instead: set `MAIL_UNSUB_GOOGLE_CLIENT_ID` / `MAIL_UNSUB_GOOGLE_CLIENT_SECRET` and/or
-  `MAIL_UNSUB_MS_CLIENT_ID`.
-- **If the shared Google client is abused:** the maintainer creates a new secret in Google Cloud,
-  ships a new release, then deletes the old secret.
+- **Google (early access):** each user creates their own Google "Desktop app" client
+  ([docs/gmail-setup.md](docs/gmail-setup.md)) and sets `MAIL_UNSUB_GOOGLE_CLIENT_ID` /
+  `MAIL_UNSUB_GOOGLE_CLIENT_SECRET`. No Google client secret is stored in this repository.
+- **Use your own Microsoft app** instead: set `MAIL_UNSUB_MS_CLIENT_ID`.
